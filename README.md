@@ -1,190 +1,205 @@
 # Sovereign Wrapper
 
-**CISO-proof vault for AI** — an iron cage around the model, not a chatbot.
+**A CISO-proof vault for AI** — an iron cage around the model.
 
-Corporate default: ask an LLM to summarize a codebase or check a client ledger and it grabs raw files, burns tokens, may read `.env`, or run destructive SQL. CISOs block that.
+Not a chatbot. Not “another MCP demo.” A control plane that treats the LLM as smart, useful, and **hostile**: it only sees what infrastructure allows, as the **user**, through tiny typed tools.
 
-This control plane makes the model **structurally incapable** of those moves: fail-closed policy, user-scoped identity, map-then-read code access, typed legacy translators. The LLM is treated as intelligent and **untrusted**.
-
-- GitHub: https://github.com/fjkiani/Sovereign-Wrapper-
-- Agents: [`AGENTS.md`](./AGENTS.md) (chokehold)
-- Pins: [`REFERENCES.md`](./REFERENCES.md)
-- Phase A truth: [`spine/phase-a-status.json`](./spine/phase-a-status.json) — **OPEN** until live Azure artifacts (do not invent PASS)
+- Repo: https://github.com/fjkiani/Sovereign-Wrapper-
+- Agent rules: [`AGENTS.md`](./AGENTS.md)
+- Upstream clone pins (SHAs live there, not here): [`REFERENCES.md`](./REFERENCES.md)
+- Live Azure spine status: [`spine/phase-a-status.json`](./spine/phase-a-status.json) — **OPEN** until real smoke artifacts exist
 
 ---
 
-## Engine vs parts (read this first)
+## What problem this solves
 
-| Layer | What | Engine? |
-|-------|------|---------|
-| **Microsoft Foundry Agent Service** | Managed run loop: threads, tool calls, scale, identity | **YES — run engine** |
-| **AGT ACS** (`AgentControl` / Rego) | Fail-closed policy on every tool/model hop | **YES — policy kernel** |
-| APIM Foundry governance | JWT tollbooth, quotas, private backends | No — pipe |
-| azmcp-obo-template | Azure MCP with On-Behalf-Of | No — tools |
-| microsoft/mcp | Official Azure/Fabric MCP catalog | No — tools |
-| EnterpriseMCP | Entra Graph tools | No — tools |
-| **This repo `packages/*`** | RepoNavigator, Atlassian RO, legacy adapter | No — owned tools |
-| OpenClaw / unauth `/mcp` | Legal SaaS island / master-key anti-pattern | **Never the engine** |
+In a bank or any regulated shop, someone asks an internal agent:
 
-**One sentence:** Foundry runs the agent; AGT makes bad tool calls die before execution; APIM + OBO + Toolbox + owned MCPs are how data is reached — not how the agent “thinks.”
+> “Summarize this repo” · “Pull the client ledger” · “Find the Confluence page on SOX”
 
-You do **not** get a runnable vault by cloning tools alone. Clones without a Foundry agent + AGT gate are **silos**.
+Without a vault, the model typically:
 
----
+1. Gets a **master key** or broad service account
+2. Reads **whatever files** the tools can reach (including `.env`, keys, credentials)
+3. Dumps **whole files** into the prompt (cost + confusion + secret bleed)
+4. Optionally runs **free SQL / shell** “to be helpful”
 
-## Four pillars (plain English → code)
+CISOs are right to block that. Employees then use shadow ChatGPT on the side — worse.
 
-| # | Pillar | Plain English | Code |
-|---|--------|---------------|------|
-| 1 | **AGT Deny** (bouncer) | Before `run_sql` / `read_file` / … executes, ACS checks the rulebook. Fail-closed drop. | Vendor AGT @ `0533cea` → `foundry_agents.py` |
-| 2 | **OBO + APIM** (badge check) | Agent presents **Susan's** Entra badge, not a master key. APIM verifies JWT. | OBO @ `fd07d5d`, APIM @ `2d5478b` |
-| 3 | **RepoNavigator** (map maker) | Table of contents, then ≤8192-byte symbol reads; secret paths blocked. | `packages/repo-navigator/` |
-| 4 | **Legacy adapter** (translator) | Only `query_client_ledger` — no free SQL; SOAP/AS400 never exposed. | `packages/legacy-adapter-mcp/` |
-
-Docs plane (same cage): `packages/atlassian-mcp/` — `search` / `get_page` / `get_issue` only. **Reject** “PAT Hijack / bypass procurement” as architecture; use approved OAuth/app + APIM allowlist + AGT write-deny.
+**Sovereign Wrapper is the answer that makes “yes, you can deploy agents” true:** the model is physically, cryptographically, and structurally kept from those moves. Bad intent or prompt injection cannot “talk past” the bouncer.
 
 ---
 
-## All repos — how they stitch
-
-Upstream clones live under `SOVEREIGN_VENDOR_ROOT` (default sibling `_sovereign-audit`). Pins verified in [`REFERENCES.md`](./REFERENCES.md).
-
-### Owned (this git repo)
-
-| Path | Role in stitch |
-|------|----------------|
-| `spine/` | Phase A ops: prereqs, AGT deny smoke wrapper, OBO/APIM runbooks |
-| `packages/repo-navigator/` | Pillar 3 MCP — map → find → read_symbol |
-| `packages/atlassian-mcp/` | Governed Confluence/Jira read MCP |
-| `packages/legacy-adapter-mcp/` | Pillar 4 typed ledger MCP |
-
-### Vendor (clone @ SHA — not vendored into git)
-
-| Dir under `$SOVEREIGN_VENDOR_ROOT` | SHA | Stitch role |
-|------------------------------------|-----|-------------|
-| `agent-governance-toolkit` | `0533cea` | Policy kernel; `.../foundry_agents.py`, `foundry_agent_guarded.py` |
-| `apim-foundry-governance` | `2d5478b` | Model + MCP egress PEP (`validate-jwt`, terraform) |
-| `azmcp-obo-template` | `fd07d5d` | User-scoped Azure tools on ACA (`UseOnBehalfOf`) |
-| `mcp` | `797cee3` | Official Azure MCP catalog (pick tools; not the loop) |
-| `EnterpriseMCP` | `5c165f1` | Entra Graph read later |
-
-### Anti-pattern (reference only)
-
-| Clone | Why it is not the vault |
-|-------|-------------------------|
-| `openclaw-saas` @ `9f07708` | Unauthenticated `/mcp` / master-key style — domain cargo only |
-
-```bash
-export SOVEREIGN_VENDOR_ROOT="${SOVEREIGN_VENDOR_ROOT:-$HOME/Desktop/development/_sovereign-audit}"
-```
-
----
-
-## How the agent stitches this together (runtime path)
-
-One user turn → one governed path. Nothing below is “optional decoration.”
+## What this means in one picture
 
 ```text
-1. User (Entra ID)
-      │
-2. ──► Microsoft Foundry Agent Service          ← RUN ENGINE (loop / tools / threads)
-      │         │
-      │         × AGT ACS (AgentControl + Rego)  ← every proposed tool/model hop
-      │         │    ALLOW → continue
-      │         │    DENY  → drop (tool never runs)   ← pillar 1
-      │         │
-3. ──► APIM (apim-foundry-governance)           ← badge + egress tollbooth
-      │         │    validate-jwt / MI / quotas / private backends
-      │         │
-4. ──► Foundry Toolbox / remote MCP endpoints
-      │         ├─ Azure MCP (azmcp-obo-template)     ← acts as USER (OBO)     pillar 2
-      │         ├─ EnterpriseMCP (optional)           ← Entra Graph read
-      │         ├─ RepoNavigator (this repo)          ← map / find / read_symbol  pillar 3
-      │         ├─ Atlassian MCP (this repo)          ← search / get_page / get_issue
-      │         └─ Legacy adapter (this repo)         ← query_client_ledger only   pillar 4
-      │
-5. Response returns only through the same cage (no side-channel raw file dump)
+  Susan asks a question
+           │
+           ▼
+  Foundry Agent Service     ← the only thing that “runs” the agent loop
+           │
+           × AGT Deny         ← bouncer: if the rulebook says no, the tool never runs
+           │
+           ▼
+  APIM + user badge (OBO)   ← tollbooth: agent must act as Susan, not as God
+           │
+           ▼
+  Tiny allowlisted tools    ← map-a-repo / read-a-page / query-one-ledger
+           │
+           ▼
+  Answer (no side-channel dump of secrets or mainframes)
 ```
 
-### What the agent is allowed to do (tool choreography)
-
-| Goal | Ordered tools | Forbidden |
-|------|---------------|-----------|
-| Understand code | `get_architecture_map` → `find_symbol` → `read_symbol` | Whole-repo / whole-file dump, reading `.env` / credential globs |
-| Read docs/tickets | `search` → `get_page` / `get_issue` | create/update/delete (AGT deny even if upstream grows writes) |
-| Client ledger | `query_client_ledger(client_id, as_of)` | Free SQL, SOAP, shell, drop/delete |
-| Azure ops | OBO Azure MCP tools only | Agent master key / shared god credential |
-
-AGT sits on **every** hop. APIM does not replace AGT; OBO does not replace AGT.
-
-### What “stitched” means in practice
-
-| State | Meaning |
-|-------|---------|
-| **Silo** (today for packages) | MCP smokes pass locally; Foundry does not call them yet |
-| **Kernel proven** | `spine/run-agt-deny-smoke.sh` log shows ALLOW + DENY + OK line |
-| **Stitched** | One Foundry agent has Toolbox entries for owned + OBO MCPs, traffic via APIM, ACS policy attached |
-
-Package smoke ≠ stitched vault. Phase A OPEN = not stitched.
+If you only clone tool repos and never stand up Foundry + the bouncer, you have **parts on a shelf**. That is a silo pile, not a vault.
 
 ---
 
-## Execution order (kill the silo)
+## The four things we are actually building
 
-| Step | Deliverable | Gate artifact |
-|------|-------------|---------------|
-| **E0** | Alpha: install `az` `azd` `terraform` `opa`; `az login`; export `AZURE_OPENAI_*` | `spine/check-prereqs.sh` exit 0 |
-| **E1** | AGT deny-proof via vendor `foundry_agents.py` | Smoke log under `spine/` with ALLOW/DENY/OK |
-| **E2** | Foundry project + one hosted/prompt agent + `foundry_agent_guarded.py` path | Live agent id / thread evidence |
-| **E3** | `azd up` OBO Azure MCP | ACA MCP URL + OBO (`RUNBOOK-obo-azd.txt`) |
-| **E4** | Attach `packages/*` MCPs to Toolbox (allowlisted tools only) | Agent can call map / Atlassian RO / ledger |
-| **E5** | APIM in front of model + MCP egress | `RUNBOOK-apim.txt` deploy evidence |
+### 1. The bouncer — AGT Deny
 
-Runbooks: [`spine/README.md`](./spine/README.md).
+**Meaning:** Before the agent runs *any* tool (`run_sql`, `read_file`, `drop_table`, …), a policy engine checks a rulebook. Fail-closed: no “soft warn,” no “try anyway.” Deny means the tool process never starts.
+
+**Why CISOs care:** Prompt injection and “helpful” models cannot invent a path around a hard drop at the control plane.
+
+**Where the code lives:** Microsoft Agent Governance Toolkit (ACS / Rego / `AgentControl`). Smoke entry in this repo: `spine/run-agt-deny-smoke.sh` → vendor `foundry_agents.py`.
+
+### 2. The badge check — OBO + APIM
+
+**Meaning:** Amateur setups give the agent a shared “integration user” that can see everything. We do the opposite: when Susan asks, the tools must prove they are acting **on Susan’s behalf** (On-Behalf-Of). Azure API Management sits in front like a tollbooth — JWT, quotas, private backends.
+
+**Why CISOs care:** If Susan cannot open HR files, neither can the agent “helping” Susan. Blast radius = user entitlements, not a god key.
+
+**Where the code lives:** Azure MCP OBO sample (ACA + `UseOnBehalfOf`) and APIM Foundry governance terraform/policies. Runbooks under `spine/`.
+
+### 3. The map maker — RepoNavigator
+
+**Meaning:** Repos are not books with a table of contents. Naive agents download the whole tree, burn tokens, get lost, and trip over secrets.
+
+We build a **map** (Tree-sitter architecture skeleton), then allow only **surgical reads** of one symbol window (default cap **8192 bytes**). Paths that look like secrets (`.env`, credentials, keys) are blocked in code.
+
+**Why CISOs care:** “Summarize the codebase” stops meaning “exfiltrate everything the clone can see.”
+
+**Where the code lives:** `packages/repo-navigator/` in **this** repo (owned). Flow: `get_architecture_map` → `find_symbol` → `read_symbol`.
+
+### 4. The translator — Legacy adapter
+
+**Meaning:** Banks still run AS/400, SOAP, dusty Dynamics, read-only SQL behind weird CLIs. Letting an LLM speak those dialects is how you get `DROP TABLE` energy.
+
+We expose **one idiot-proof tool**, e.g. `query_client_ledger(client_id, as_of)`. The adapter talks to the beast inside the bank network. The model never sees SOAP, SQL, or the mainframe.
+
+**Why CISOs care:** Modernize the *interface* without modernizing (or exposing) the core.
+
+**Where the code lives:** `packages/legacy-adapter-mcp/` in **this** repo. Deploy behind private / APIM self-hosted gateway — not laptop → core.
+
+### Docs plane (same cage) — Atlassian
+
+**Meaning:** Confluence/Jira as **read-only** tools (`search`, `get_page`, `get_issue`), with identity the CISO can see. Writes denied at the bouncer even if an upstream MCP grows them.
+
+**Not our approach:** “PAT hijack / bypass procurement / shadow IT on a laptop.” That is the opposite of a vault.
+
+**Where the code lives:** `packages/atlassian-mcp/`.
 
 ---
 
-## Status (evidence-backed — re-check `phase-a-status.json`)
+## What each repo is for (no pin soup)
 
-| Surface | Status | Notes |
-|---------|--------|-------|
-| Foundry run engine live | **OPEN** | Needs E0–E2 |
-| AGT deny smoke live | **OPEN** | `azure_smoke_ran: false`, `pass_claimed: false` |
-| RepoNavigator | Local smoke + demo `architecture_map.json` | Not yet on Foundry Toolbox |
-| Atlassian MCP | Dry-run smoke | Governed pattern; not hijack |
-| Legacy adapter | Fake-ledger smoke | Real AS400/SOAP behind private GW later |
-| OBO + APIM deploy | **OPEN** | CLIs/creds absent on last prereq check |
+Upstream trees are cloned beside this project (`SOVEREIGN_VENDOR_ROOT`, usually `_sovereign-audit`). Exact commit pins stay in [`REFERENCES.md`](./REFERENCES.md) so this README stays about **meaning**.
+
+| Piece | In human terms | Role |
+|-------|----------------|------|
+| **Foundry Agent Service** | Microsoft’s managed agent runtime | **Run engine** — loop, threads, tool calls |
+| **agent-governance-toolkit** | Microsoft’s agent policy toolkit | **Bouncer / policy kernel** |
+| **apim-foundry-governance** | APIM patterns for Foundry | **Tollbooth** for models + MCP egress |
+| **azmcp-obo-template** | Sample Azure MCP that uses the user’s token | **Badge-bound Azure tools** |
+| **microsoft/mcp** | Official Azure / Fabric MCP servers | Tool catalog — pick, don’t worship |
+| **EnterpriseMCP** | Entra / Graph oriented MCP | Later: directory / CA posture reads |
+| **This repo `packages/*`** | Our map maker, docs reader, ledger translator | **Owned vault tools** |
+| **This repo `spine/`** | Scripts + runbooks to prove Phase A | **How we start the engine** |
+| OpenClaw-style unauth `/mcp` | SaaS with open tool mounts | **Anti-pattern** — never the engine |
+
+**Remember:** cloning those Microsoft repos does not “give you an engine.” Foundry is a **service**. AGT is the kernel you **wire on**. The rest is fuel lines.
 
 ---
 
-## Repo layout
+## How an agent turn actually runs
+
+Example: Susan asks *“Where is rate limiting implemented, and what’s client CLI-1001’s ledger as of today?”*
+
+1. **Foundry** starts/continues her thread (engine).
+2. Model proposes tools. **AGT** inspects each proposal:
+   - `read_file(.env)` → **DENY** (never runs)
+   - `get_architecture_map` → **ALLOW**
+   - `read_symbol(...)` within byte cap → **ALLOW**
+   - `query_client_ledger("CLI-1001", …)` → **ALLOW** if policy says so; escalate if high-risk
+3. Allowed calls leave through **APIM**, carrying **Susan’s** identity where OBO applies.
+4. **RepoNavigator** returns map + a tiny symbol window — not the whole repo.
+5. **Legacy adapter** returns a fixed ledger schema — no SQL string from the model.
+6. Model answers Susan. Secrets and mainframes never entered the prompt as raw surfaces.
+
+That stitching — engine × bouncer × badge × tiny tools — **is** the product.
+
+| State | What it means |
+|-------|----------------|
+| **Silo** | Package smokes pass on a laptop; Foundry never called them |
+| **Kernel proven** | Deny smoke log shows ALLOW + DENY + OK |
+| **Stitched** | One Foundry agent, ACS on, APIM on, Toolbox points at our MCPs |
+
+Today: owned packages are **silo-proven**. Phase A (engine + kernel live) is **OPEN**.
+
+---
+
+## Build order (what “done” looks like)
+
+| Step | What you actually get |
+|------|------------------------|
+| **E0** | Machine can talk to Azure (`az` / `azd` / `terraform` / `opa` + AOAI env) |
+| **E1** | Proof the bouncer drops bad tool calls (`spine` deny smoke log) |
+| **E2** | A real Foundry agent exists and is guarded |
+| **E3** | Azure tools run as the user (OBO MCP up) |
+| **E4** | Foundry Toolbox calls **our** RepoNavigator / Atlassian / legacy MCPs |
+| **E5** | APIM sits in front of model + tool egress |
+
+Details: [`spine/README.md`](./spine/README.md) and the `RUNBOOK-*.txt` files there.
+
+---
+
+## Status (honest)
+
+| Surface | Reality |
+|---------|---------|
+| Foundry + AGT + OBO + APIM live | **OPEN** — needs Alpha Azure login/CLIs; see `phase-a-status.json` |
+| RepoNavigator | Local smoke + demo architecture map — not on Foundry yet |
+| Atlassian MCP | Dry-run smoke — governed pattern, not hijack |
+| Legacy adapter | Fake in-memory ledger for smoke — real backend later, private only |
+
+Do not mark Phase A green while that JSON says OPEN.
+
+---
+
+## Layout
 
 ```text
-AGENTS.md  REFERENCES.md  README.md
-spine/                          # E0–E5 ops (no fake PASS)
-packages/repo-navigator/        # pillar 3
-packages/atlassian-mcp/         # docs plane
-packages/legacy-adapter-mcp/    # pillar 4
+AGENTS.md / REFERENCES.md / README.md
+spine/                       # start the engine (Phase A)
+packages/repo-navigator/     # map maker
+packages/atlassian-mcp/      # read-only docs/tickets
+packages/legacy-adapter-mcp/ # ledger translator
 ```
 
----
-
-## Local package smokes (silo proof only)
+### Silo smokes (prove tools; not the vault)
 
 ```bash
-# Pillar 3
 cd packages/repo-navigator && python3 -m venv .venv && source .venv/bin/activate
 pip install -e . && export REPO_NAVIGATOR_CONFIG=$PWD/config.yaml && python scripts/smoke.py
 
-# Docs plane
 cd packages/atlassian-mcp && pip install -r requirements.txt
 ATLASSIAN_DRY_RUN=1 python smoke_test.py
 
-# Pillar 4
 cd packages/legacy-adapter-mcp && pip install -r requirements.txt && python smoke_test.py
 ```
 
-Phase A (engine + kernel):
+### Engine path (when Azure is ready)
 
 ```bash
 cd spine && ./check-prereqs.sh && ./run-agt-deny-smoke.sh
@@ -194,10 +209,9 @@ cd spine && ./check-prereqs.sh && ./run-agt-deny-smoke.sh
 
 ## Kill list
 
-- Treating any MCP / APIM / OpenClaw as the **run engine**
-- Master-key agents or unauthenticated `/mcp`
-- Whole-file dumps, free SQL, shell tools, secret-path reads
-- Claiming PASS / “stitched” / Phase A green without artifact paths this turn
-- PAT-hijack / bypass-procurement as the Atlassian strategy
-- Secrets in git; `DRAFT-*` / `RECALIBRATION-*` receipt novels
-- Greening `spine/phase-a-status.json` while status is OPEN
+- Calling any MCP, APIM, or OpenClaw the **run engine**
+- Master-key agents / unauthenticated tool mounts
+- Whole-file dumps, free SQL, shell, secret-path reads
+- “PAT hijack / bypass procurement” as the Atlassian plan
+- PASS / “stitched” / Phase A green without artifact paths
+- Secrets in git; receipt-novel markdown (`DRAFT-*`, `RECALIBRATION-*`)
