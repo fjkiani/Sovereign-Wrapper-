@@ -1,0 +1,83 @@
+SOVEREIGN_VENDOR_ROOT must point at vendor clones (see ../REFERENCES.md).
+Default on Alpha machine: ../_sovereign-audit relative to this monorepo sibling.
+export SOVEREIGN_VENDOR_ROOT=/path/to/_sovereign-audit
+
+RUNBOOK: APIM Foundry governance terraform apply order (Phase A)
+================================================================
+Repo:
+  ${SOVEREIGN_VENDOR_ROOT}/apim-foundry-governance
+Source of truth: that repo's README.md Deployment section.
+
+GOAL
+----
+All model traffic from Foundry / clients hits APIM AI Gateway (not raw AOAI).
+
+PRECONDITIONS
+-------------
+- Azure subscription with OpenAI / Foundry model quota
+- Tools: terraform >= 1.7, Azure CLI, az login
+- Entra objects (can defer until Admin UI enablement):
+    admin_group_object_id, bff_api_audience (api://...), spa_client_id
+
+APPLY ORDER (do not skip)
+-------------------------
+0) Export operator vars (customize):
+     export location=eastus2
+     export backend-rg=rg-aigw-tfstate-dev-eastus2
+     export storage-prefix=staigwtfstate
+     export state-key=ai-gateway-eus2.tfstate
+
+1) Bootstrap remote state (once per subscription):
+     cd .../apim-foundry-governance
+     ./scripts/bootstrap-backend.sh \
+       --location "$location" \
+       --backend-rg "$backend-rg" \
+       --storage-prefix "$storage-prefix" \
+       --state-key "$state-key"
+
+2) Variables:
+     cp infra/terraform.tfvars.example infra/terraform.tfvars
+     # Edit: prefix, location, owner, cost_center, apim_publisher_*, budget_*
+     # Decide apim_public=true|false BEFORE first apply (switching recreates APIM)
+
+3) First apply — gateway core only
+   Leave worker_image and admin_ui_image empty (""):
+     cd infra
+     terraform init
+     terraform apply
+   Note: APIM VNet injection can take ~45 minutes.
+
+4) Build images in ACR (no local Docker required):
+     acr=$(terraform output -raw registry_login_server)
+     reg=$(terraform output -raw registry_name)
+     az acr build --registry $reg --image config-sync-worker:latest ../app/config-sync-worker
+     az acr build --registry $reg --image admin-ui:latest ../app/admin-ui
+
+5) Entra app registration for Admin UI:
+     ../scripts/app-registration.sh
+   Put into terraform.tfvars:
+     worker_image, admin_ui_image, admin_ui_public,
+     admin_group_object_id, bff_api_audience, spa_client_id, entra_tenant_id
+
+6) Second apply — enable worker + Admin UI:
+     terraform apply
+
+7) Seed Cosmos (jumpbox path; or enable_jumpbox=true so apply seeds automatically):
+     ./scripts/seed-cosmos-jumpbox.sh https://<cosmos-account>.documents.azure.com:443/
+     ./scripts/seed-pricing-jumpbox.sh https://<cosmos-account>.documents.azure.com:443/
+   Trigger sync job if needed:
+     az containerapp job start -g <rg> -n <config_sync_job_name>
+
+8) Point SPA redirect at admin UI FQDN (see README step 7).
+
+SMOKE (after deploy — safe, non-destructive)
+--------------------------------------------
+- Call gateway /openai or /foundry with a consumer subscription key
+- Confirm App Insights / Admin UI request log shows the call
+- Save request id / correlation header to spine/ as .txt or .log for PASS evidence
+
+OPEN
+----
+This workstation currently lacks az/terraform (see check-prereqs.sh).
+CLEAR: Alpha installs tools + az login, then run steps 1–3 minimum for core gateway.
+Do not claim APIM model-path PASS without a live request id artifact.

@@ -1,0 +1,63 @@
+SOVEREIGN_VENDOR_ROOT must point at vendor clones (see ../REFERENCES.md).
+Default on Alpha machine: ../_sovereign-audit relative to this monorepo sibling.
+export SOVEREIGN_VENDOR_ROOT=/path/to/_sovereign-audit
+
+RUNBOOK: Foundry + AGT ACS deny-proof (Phase A)
+===============================================
+Artifact path: spine/ (this file)
+Example (committed): 
+  ${SOVEREIGN_VENDOR_ROOT}/agent-governance-toolkit/policy-engine/sdk/python/examples/real_packages/foundry_agents.py
+Wrapper: spine/run-agt-deny-smoke.sh
+Prereq gate: spine/check-prereqs.sh
+
+GOAL
+----
+Prove ACS fails closed: destructive tool args are DENY'd before the Python tool
+runs; a safe read is ALLOW'd and executes. This is the kernel deny-proof for
+the Sovereign spine — not a mocked unit test.
+
+PRECONDITIONS
+-------------
+1. Install Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli
+2. az login  (subscription with Azure OpenAI / Foundry model access)
+3. Install OPA on PATH, or set ACS_OPA_PATH to the opa binary
+4. Python 3.10+ preferred (3.9 may work); pip install:
+     pip3 install "agent-control-specification" azure-ai-agents pyyaml
+5. Export judge backend credentials (read by _common.require_azure):
+
+     export AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com"
+     export AZURE_OPENAI_API_KEY="<key>"
+     export AZURE_OPENAI_DEPLOYMENT="<deployment>"   # e.g. gpt-4o
+     export AZURE_OPENAI_API_VERSION="2025-04-01-preview"
+
+OPTIONAL: place the same keys in agent-governance-toolkit/policy-engine/.env
+(loaded by _common if present). Never commit secrets.
+
+RUN
+---
+  cd ${SOVEREIGN_VENDOR_ROOT}/spine
+  ./check-prereqs.sh          # must exit 0
+  ./run-agt-deny-smoke.sh     # invokes foundry_agents.py
+
+Or directly:
+  cd .../agent-governance-toolkit/policy-engine/sdk/python/examples/real_packages
+  python3 foundry_agents.py
+
+PASS EVIDENCE (save stdout to a .log under spine/ when green)
+-------------
+- Line containing: ALLOW  -> tool ran
+- Line containing: DENY   -> tool NOT run  (DROP / DELETE path)
+- Final: OK: both code paths enforced the LLM-judge policy.
+- Do NOT claim PASS without that log on disk this turn.
+
+OPEN / BLOCKED
+--------------
+If check-prereqs.sh exits non-zero: status OPEN.
+CLEAR strategy: Alpha provides az login + AZURE_OPENAI_* (+ opa).
+Zo must not fake allow/deny transcripts.
+
+RELATED
+-------
+- foundry_governance.acs.yaml + policy/foundry_tool_guard.rego (same directory)
+- FOUNDRY_INTEGRATION.md in the real_packages folder
+- Live Foundry agent hook: foundry_agent_guarded.py (needs Foundry project env)

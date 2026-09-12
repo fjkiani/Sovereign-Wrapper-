@@ -1,0 +1,9 @@
+# RepoNavigator allowlist — paths relative to this file's directory.
+maps_dir: data/maps
+max_read_bytes: 8192
+max_symbol_lines: 80
+
+repos:
+  demo:
+    path: fixtures/demo-repo
+    # allowed_shas: null → any indexed pinned SHA accepted for this allowlisted repo

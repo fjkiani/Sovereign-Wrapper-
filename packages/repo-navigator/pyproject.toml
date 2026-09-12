@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-navigator"
+version = "0.1.0"
+description = "RepoNavigator MCP v0 — Tree-sitter architecture map + capped symbol tools"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "mcp>=1.2.0,<2",
+  "tree-sitter>=0.22.0",
+  "tree-sitter-python>=0.23.0",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+repo-navigator = "repo_navigator.server:main"
+repo-navigator-index = "repo_navigator.indexer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

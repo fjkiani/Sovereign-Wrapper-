@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data/maps/
+*.egg-info/
+dist/
+build/
+fixtures/demo-repo/.git/
+.pytest_cache/

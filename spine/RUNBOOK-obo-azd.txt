@@ -1,0 +1,81 @@
+SOVEREIGN_VENDOR_ROOT must point at vendor clones (see ../REFERENCES.md).
+Default on Alpha machine: ../_sovereign-audit relative to this monorepo sibling.
+export SOVEREIGN_VENDOR_ROOT=/path/to/_sovereign-audit
+
+RUNBOOK: azd up OBO Azure MCP + attach to Foundry Toolbox (Phase A)
+===================================================================
+Repo:
+  ${SOVEREIGN_VENDOR_ROOT}/azmcp-obo-template
+Sources: README.md, Usage.md (Calling tools from Foundry Agent), EntraIdConfig.md
+
+GOAL
+----
+Deploy Azure MCP Server on ACA with UseOnBehalfOf; register it in Foundry
+Agent Toolbox so tools run as the signed-in user (not a shared PAT).
+
+PRECONDITIONS
+-------------
+- Azure subscription with Owner or User Access Administrator
+- Install: Azure Developer CLI (azd), Azure CLI
+- az login / azd auth login
+
+DEPLOY
+------
+  cd ${SOVEREIGN_VENDOR_ROOT}/azmcp-obo-template
+  azd auth login          # if needed
+  azd up
+  # prompts: environment name, subscription, resource group
+
+POST-DEPLOY (required — OBO will not work without this)
+-------------------------------------------------------
+1) azd env get-values
+   Note:
+     CONTAINER_APP_URL
+     ENTRA_APP_CLIENT_CLIENT_ID
+     ENTRA_APP_SERVER_CLIENT_ID
+     AZURE_TENANT_ID   (if present)
+
+2) Portal → client app registration (ENTRA_APP_CLIENT_CLIENT_ID)
+   API permissions → Add → My APIs → server app → scope Mcp.Tools.ReadWrite
+   Grant admin consent
+
+3) Portal → server app: grant admin consent for ARM + Storage (downstream APIs)
+   See EntraIdConfig.md if My APIs does not list the server app
+
+4) Optional local SDK smoke: client/ README — list tools + storage_account_get
+
+WIRE TO FOUNDRY TOOLBOX (MCP identity passthrough)
+--------------------------------------------------
+From Usage.md — Calling tools from Foundry Agent:
+
+1) Foundry Agent → Tools → Add → Custom → Model Context Protocol (MCP) → Create
+2) Remote MCP Server endpoint = CONTAINER_APP_URL (from azd env get-values)
+3) Authentication = OAuth Identity Passthrough
+4) Client app registration:
+   - Create a client secret under the client app (Certificates & secrets)
+   - Client ID  = ENTRA_APP_CLIENT_CLIENT_ID
+   - Client secret = that secret value
+5) Token URL:
+     https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token
+   Auth URL:
+     https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize
+6) Scope:
+     {ENTRA_APP_SERVER_CLIENT_ID}/Mcp.Tools.ReadWrite
+7) Connect → copy Foundry Redirect URL → add as Web redirect URI on the client app
+8) Prompt the agent to load MCP tools and call a read-only storage tool
+
+NOTES
+-----
+- Template enables UseOnBehalfOf + --read-only storage namespace (see
+  infra/modules/aca-infrastructure.bicep). Do not widen to write tools until
+  AGT allowlist + APIM egress are in place.
+- Foundry today may require client secret for OAuth passthrough; FIC is preferred
+  when the product supports it.
+- After success: save azd env get-values (redact secrets) + a tool transcript
+  path under spine/ as PASS evidence. No transcript = OPEN.
+
+OPEN
+----
+This host has no az/azd (check-prereqs.sh). CLEAR: Alpha installs CLIs,
+logs in, runs azd up, then completes Toolbox wiring above.
+Cleanup later: azd down (Entra apps must be deleted manually in Portal).

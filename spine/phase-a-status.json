@@ -1,0 +1,26 @@
+{
+  "phase": "A",
+  "todos": [
+    "spine-foundry-agt",
+    "spine-obo-mcp"
+  ],
+  "checked_at_utc": "2026-09-12T06:13:10Z",
+  "azure_smoke_ran": false,
+  "status": "OPEN",
+  "reason": "az, azd, terraform, opa absent; AZURE_OPENAI_* unset; no az login possible",
+  "clear_strategy": "Alpha installs Azure CLI + azd + terraform + opa, runs az login, exports AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT/API_VERSION, then re-run spine/check-prereqs.sh and spine/run-agt-deny-smoke.sh; for OBO run azd up per RUNBOOK-obo-azd.txt",
+  "artifacts": [
+    "RUNBOOK-apim.txt",
+    "RUNBOOK-foundry-agt.txt",
+    "RUNBOOK-obo-azd.txt",
+    "agt-smoke-attempt.out.txt",
+    "check-prereqs.sh",
+    "phase-a-status.json",
+    "prereq-check.out.txt",
+    "run-agt-deny-smoke.sh"
+  ],
+  "agt_example": "${SOVEREIGN_VENDOR_ROOT}/agent-governance-toolkit/policy-engine/sdk/python/examples/real_packages/foundry_agents.py",
+  "pass_claimed": false,
+  "vendor_root_env": "SOVEREIGN_VENDOR_ROOT",
+  "repo": "https://github.com/fjkiani/Sovereign-Wrapper-"
+}
