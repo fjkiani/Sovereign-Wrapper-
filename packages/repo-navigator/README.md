@@ -1,42 +1,34 @@
-# RepoNavigator MCP v0
+# RepoNavigator — map maker (pillar 3)
 
-Offline Tree-sitter architecture maps + three guarded MCP tools.
+**Problem:** “Summarize this codebase” makes the model download everything, burn tokens, and often hit `.env` / secrets.
 
-## Install
-
-```bash
-cd /Users/fahadkiani/Desktop/development/_sovereign-audit/repo-navigator
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-## Index fixture
-
-```bash
-export REPO_NAVIGATOR_CONFIG=$PWD/config.yaml
-# smoke creates git commit in fixtures/demo-repo if needed
-python scripts/smoke.py
-# or manually after fixture has a HEAD:
-repo-navigator-index --repo-id demo --config config.yaml
-```
-
-## Run MCP (stdio)
-
-```bash
-export REPO_NAVIGATOR_CONFIG=$PWD/config.yaml
-repo-navigator
-# or: python -m repo_navigator.server
-```
+**Vault rule:** Give a **table of contents** (Tree-sitter architecture map), then only a **capped symbol window** (default **8192 bytes**). Secret path globs are blocked in code.
 
 ## Tools
 
-| Tool | Args | Notes |
-|------|------|-------|
-| `get_architecture_map` | `repo_id`, `git_sha`, `include_symbols?` | Allowlisted + pinned SHA only |
-| `find_symbol` | `repo_id`, `git_sha`, `query`, `limit?` | Substring search on map |
-| `read_symbol` | `repo_id`, `git_sha`, `symbol_id` / `qualname`+`path` | Capped line/byte window |
+| Tool | Purpose |
+|------|---------|
+| `get_architecture_map` | Map for `(repo_id, git_sha)` — allowlisted + pinned SHA |
+| `find_symbol` | Locate class/function on the map |
+| `read_symbol` | Read only that symbol’s window |
 
-Guards: allowlist (`config.yaml`), required `git_sha`, `max_read_bytes` / `max_symbol_lines`, blocked secret paths (`.env`, credentials, keys, …).
+Flow for agents: **map → find → read**. Never whole-file dump.
 
-Maps land at `data/maps/<repo_id>/<git_sha>/architecture_map.json`.
+## Install / smoke
+
+```bash
+cd packages/repo-navigator
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+export REPO_NAVIGATOR_CONFIG=$PWD/config.yaml
+python scripts/smoke.py
+```
+
+MCP stdio: `repo-navigator` or `python -m repo_navigator.server`
+
+## Guards (`config.yaml` + `guards.py`)
+
+- Repo allowlist
+- Required pinned `git_sha`
+- `max_read_bytes` / `max_symbol_lines`
+- Blocked paths: `.env`, credentials, keys, etc.

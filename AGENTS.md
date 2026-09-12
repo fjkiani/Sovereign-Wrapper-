@@ -1,57 +1,54 @@
 # AGENTS — entry + chokehold
 
-Read this file before any edit, claim, smoke, or push in this repository.
+Read this before any edit, claim, smoke, or push.
 
-## Vision (one line)
+## Vision
 
-**Foundry runs agents. AGT ACS denies unsafe tool calls. APIM owns model egress. Owned MCPs under `packages/` are the tools. This repo is not vibes.**
+We are building a **CISO-proof vault for AI**: an iron cage where the model is treated as intelligent and **hostile**. It only sees data through user-scoped identity, fail-closed policy, and tiny typed tools. It cannot “just read the repo” or “just run SQL.”
+
+Not a chatbot. A Sovereign Wrapper.
+
+## Four pillars → code
+
+| Pillar | Plain English | Where |
+|--------|---------------|--------|
+| **1. AGT Deny** | Bouncer: tool calls die before execution if Rego/ACS says no | Vendor AGT @ `0533cea`; `spine/run-agt-deny-smoke.sh` |
+| **2. OBO + APIM** | Badge check: agent acts as Susan, not with a master key; APIM verifies JWT | OBO @ `fd07d5d`, APIM @ `2d5478b`; `spine/RUNBOOK-*.txt` |
+| **3. RepoNavigator** | Map maker: table-of-contents + ≤8192-byte symbol reads; block secret paths | `packages/repo-navigator/` |
+| **4. Legacy adapter** | Translator: only `query_client_ledger`; AS400/SOAP never exposed | `packages/legacy-adapter-mcp/` |
+
+Docs plane: `packages/atlassian-mcp/` — read-only Confluence/Jira; AGT denies writes.
 
 ## Entry order
 
-1. `README.md` — skeleton map
-2. This file — chokehold rules
-3. `REFERENCES.md` — pinned upstream SHAs (vendor clones; do not invent)
-4. `spine/phase-a-status.json` — live Phase A status (OPEN until Azure smoke artifacts exist)
-5. Package README under the package you touch
+1. This file
+2. [`README.md`](./README.md) — vault story + status
+3. [`REFERENCES.md`](./REFERENCES.md) — pinned SHAs
+4. `spine/phase-a-status.json` — Phase A truth (OPEN until Azure artifacts)
+5. Package README for the surface you touch
 
-## Architecture roles (do not confuse)
+## Chokehold — must not
 
-| Role | What | In this repo |
-|------|------|--------------|
-| Engine | Microsoft Foundry Agent Service | product — not code here |
-| Kernel | AGT ACS (`foundry_agents.py`) | vendor via `SOVEREIGN_VENDOR_ROOT` |
-| Egress | APIM Foundry governance | vendor |
-| OBO tools | `azmcp-obo-template` | vendor |
-| Owned tools | RepoNavigator / Atlassian / Legacy | `packages/*` |
-| Ops spine | prereq gate + runbooks | `spine/` |
+1. Claim PASS / online / compliant without a this-turn **artifact path** (smoke log, `architecture_map.json`, APIM/`azd` output under `spine/`).
+2. Ship vibes: empty stubs labeled production-ready, fake deny transcripts, brochure MCP.
+3. Give the agent a master key or unauthenticated `/mcp` “engine” (OpenClaw anti-pattern — REFERENCES).
+4. Add Atlassian **write** tools without AGT write-deny + Alpha OK.
+5. Expose free SQL, shell, or whole-file dump tools.
+6. Commit secrets. Use `.env.example` only.
+7. Vendor Microsoft megarepos into git without Alpha OK — use `SOVEREIGN_VENDOR_ROOT`.
+8. Create `DRAFT-*` / `RECALIBRATION-*` receipt markdown.
+9. Mark Phase A green while `spine/phase-a-status.json` says `OPEN` or prereqs fail.
+10. Let the model read `.env` / credential paths — RepoNavigator guards are mandatory, not optional.
 
-## Chokehold — agents must not
+## Chokehold — must
 
-1. **Claim PASS / online / compliant / ready** without a this-turn artifact path:
-   - smoke stdout file, or
-   - `packages/repo-navigator/data/maps/<repo>/<sha>/architecture_map.json`, or
-   - APIM request id / `azd` deploy output path under `spine/`
-2. **Push “vibes”** — README novels, empty stubs labeled production-ready, fake MCP, fabricated deny logs.
-3. **Treat OpenClaw unauthenticated `/mcp` as the engine** — anti-pattern only (see REFERENCES).
-4. **Add write tools** to Atlassian package without AGT write-deny + explicit Alpha OK.
-5. **Expose free SQL / shell / whole-file dump** as MCP tools.
-6. **Commit secrets** (`.env`, PATs, API keys). Use `.env.example` only.
-7. **Vendor entire Microsoft megarepos into git** without Alpha OK — clone to `SOVEREIGN_VENDOR_ROOT` / `vendor/` (gitignored) and pin SHA in REFERENCES.
-8. **Create `DRAFT-*` / `RECALIBRATION-*` receipt markdown** — chat audit or append existing canon only.
-9. **Mark Phase A green** while `spine/phase-a-status.json` says `OPEN` or prereqs fail.
-
-## Chokehold — agents must
-
-1. Prefer `Read` / `Grep` / `Shell` evidence over memory.
-2. For RepoNavigator: map-then-read only — `get_architecture_map` → `find_symbol` → `read_symbol` (max 8192 bytes).
-3. Run package smoke before claiming a package works:
-   - `packages/repo-navigator`: `python scripts/smoke.py`
-   - `packages/atlassian-mcp`: `python smoke_test.py`
-   - `packages/legacy-adapter-mcp`: `python smoke_test.py`
+1. Evidence from `Read` / `Grep` / `Shell` over memory.
+2. RepoNavigator flow only: `get_architecture_map` → `find_symbol` → `read_symbol`.
+3. Smoke before claiming a package works (commands below).
 4. After Azure work: update `spine/phase-a-status.json` with real status + artifact paths.
 5. Keep tool surfaces allowlisted and typed.
 
-## Default first task for a new agent session
+## Default first task
 
 ```bash
 cd packages/repo-navigator

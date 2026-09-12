@@ -1,37 +1,31 @@
-# Atlassian MCP — read-only scaffold (Phase C)
+# Atlassian MCP — governed docs (same vault)
 
-Governed Confluence/Jira access for the Sovereign Wrapper. **Tools only:** `search`, `get_page`, `get_issue`.
+**Vault rule:** AI may search/read Confluence/Jira pages and issues **as the user**, not with a master key and not with write tools.
 
-## AGT / policy (non-negotiable)
+**Tools only:** `search`, `get_page`, `get_issue`.
 
-Write tools (`create_*`, `update_*`, `delete_*`, comment/transition) **must be denied at the AGT ACS policy layer**, even if a future upstream MCP exposes them. This server does not register write tools; APIM allowlist + AGT deny are the real control plane. Do not rely on “the model won’t call them.”
+Write operations (`create_*`, `update_*`, `delete_*`, …) must be **denied at AGT ACS** even if an upstream MCP grows them. This server does not register writes. APIM allowlist + AGT deny are the control plane.
 
-Deploy behind Foundry Toolbox + APIM; OAuth app preferred (read scopes). Vaulted PAT only as credential material behind the gateway — never laptop PAT scripts.
+OAuth app preferred (read scopes). Vaulted PAT only as gateway credential material — not laptop PAT-hijack architecture.
 
 ## Env
 
+See `.env.example`. Never commit secrets.
+
 | Variable | Purpose |
 |----------|---------|
-| `ATLASSIAN_BASE_URL` | Site URL, e.g. `https://your-site.atlassian.net` |
-| `ATLASSIAN_OAUTH_CLIENT_ID` / `ATLASSIAN_OAUTH_CLIENT_SECRET` / `ATLASSIAN_OAUTH_ACCESS_TOKEN` | OAuth placeholders |
-| `ATLASSIAN_API_TOKEN` / `ATLASSIAN_EMAIL` | Optional vaulted PAT material |
-| `ATLASSIAN_DRY_RUN` | `1` forces stub JSON; default dry-run when no creds |
+| `ATLASSIAN_BASE_URL` | Site URL |
+| `ATLASSIAN_OAUTH_*` / `ATLASSIAN_API_TOKEN` | Creds behind gateway |
+| `ATLASSIAN_DRY_RUN=1` | Stub JSON + `correlation_id` |
 
-Copy `.env.example` → `.env` locally. **Never commit secrets.**
-
-## Install / run
-
-Requires **Python ≥3.10** (official `mcp` SDK).
+## Smoke
 
 ```bash
-cd atlassian-mcp
-python3.11 -m venv .venv && source .venv/bin/activate
+cd packages/atlassian-mcp
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python smoke_test.py
-# MCP stdio (Foundry / Claude Desktop style):
-python server.py
+ATLASSIAN_DRY_RUN=1 python smoke_test.py
+python server.py   # MCP stdio
 ```
 
-## Dry-run
-
-With no creds (or `ATLASSIAN_DRY_RUN=1`), each tool returns structured JSON including `correlation_id`, `mode: dry_run`, and stub `data`. Live HTTP client is intentionally not wired in this scaffold.
+Requires Python ≥3.10.
